@@ -66,15 +66,14 @@ for (const [i, person] of people.entries()) {
   }
 }
 
-// Date and rank everyone in the real (non-sample) pool.
+// Date and rank everyone in the pool.
 const { data: pool, error } = await db
   .from("profiles")
   .select("id, name")
   .eq("opted_in", true)
-  .eq("is_sample", false)
   .order("name");
 if (error) throw new Error(error.message);
-console.log(`\nDating and ranking ${pool.length} people in the real pool...`);
+console.log(`\nDating and ranking ${pool.length} people in the pool...`);
 
 const incomplete = [];
 for (const person of pool) {
@@ -108,6 +107,6 @@ console.log(`\nSummary
     (verify, then add "confirm_identity": true to that entry and re-run)
   skipped:          ${results.skipped.length}${results.skipped.map((s) => `\n    - ${s}`).join("")}
   failed:           ${results.failed.length}${results.failed.map((s) => `\n    - ${s}`).join("")}
-  real pool:        ${pool.length} opted-in people
+  pool:             ${pool.length} opted-in people
   rankings incomplete: ${incomplete.length}${incomplete.map((s) => `\n    - ${s}`).join("")}`);
 if (incomplete.length) console.log("Re-run npm run ingest:people to fill in the rest (usually Gemini quota).");

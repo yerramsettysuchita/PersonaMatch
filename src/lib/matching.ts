@@ -12,8 +12,6 @@ export type Preferences = {
   age_range_min: number | null;
   age_range_max: number | null;
   city: string | null;
-  // Fictional sample profiles form their own pool (see schema.sql).
-  is_sample?: boolean;
 };
 
 const sameCity = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -38,14 +36,13 @@ export function pairBlockers(a: Preferences, b: Preferences): string[] {
   const reasons: string[] = [];
   if (!a.opted_in) reasons.push(`${a.name} hasn't opted in to the dating pool`);
   if (!b.opted_in) reasons.push(`${b.name} hasn't opted in to the dating pool`);
-  if (!!a.is_sample !== !!b.is_sample) reasons.push("fictional sample profiles only date other sample profiles");
   if (a.city && b.city && !sameCity(a.city, b.city)) reasons.push(`different cities (${a.city} vs ${b.city})`);
   if (a.looking_for && b.looking_for && a.looking_for !== b.looking_for && a.looking_for !== "open" && b.looking_for !== "open")
     reasons.push(`looking for different things (${a.looking_for} vs ${b.looking_for})`);
   return [...reasons, ...unmet(a, b), ...unmet(b, a)];
 }
 
-export type PreferenceInput = Omit<Preferences, "name" | "opted_in" | "is_sample">;
+export type PreferenceInput = Omit<Preferences, "name" | "opted_in">;
 
 // Validates the optional self-declared fields from an ingest request.
 export function parsePreferences(body: Record<string, unknown>): { value: PreferenceInput } | { error: string } {

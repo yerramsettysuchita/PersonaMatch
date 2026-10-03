@@ -20,7 +20,7 @@ const isLoopback = (ip: string) => ip === "unknown" || ip === "::1" || ip === "1
 
 // Per-IP fixed-window rate limit backed by the rate_limits table. Returns a
 // 429 Response when over the limit, otherwise records the hit and returns null.
-// Local scripts (seed, eval) calling the dev server from loopback are exempt.
+// Local scripts (ingest:people) calling the dev server from loopback are exempt.
 export async function rateLimit(request: Request, bucket: keyof typeof LIMITS): Promise<Response | null> {
   const ip = clientIp(request);
   if (process.env.NODE_ENV !== "production" && isLoopback(ip)) return null;

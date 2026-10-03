@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   }
 
   const [othersRes, datesRes] = await Promise.all([
-    db.from("profiles").select(PERSONA_COLUMNS).neq("id", personId).eq("opted_in", true).eq("is_sample", !!person.is_sample).returns<PersonaRow[]>(),
+    db.from("profiles").select(PERSONA_COLUMNS).neq("id", personId).eq("opted_in", true).returns<PersonaRow[]>(),
     db
       .from("dates")
       .select("*")

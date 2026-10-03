@@ -34,14 +34,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               </span>
               PersonaMatch
             </Link>
-            <nav className="ml-auto flex items-center gap-1 text-sm">
-              <Link
-                href="/demo"
-                className="rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-              >
-                Demo
-              </Link>
-            </nav>
           </div>
         </header>
         <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 sm:py-12">{children}</main>

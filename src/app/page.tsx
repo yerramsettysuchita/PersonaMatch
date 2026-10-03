@@ -37,14 +37,7 @@ export default async function Home() {
                   href={`/profile/${p.id}`}
                   className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{p.name}</span>
-                    {p.is_sample && (
-                      <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
-                        Sample
-                      </span>
-                    )}
-                  </span>
+                  <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{p.name}</span>
                   <span className="flex shrink-0 items-center gap-2 text-xs text-zinc-400">
                     {formatDate(p.created_at)}
                     <ChevronRight className="size-4" />

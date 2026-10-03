@@ -58,29 +58,21 @@ graph TD
 
 ## 📊 Evaluation
 
-`npm run eval` measures the system over the real people in the database (fictional samples excluded by default) and writes [EVAL.md](EVAL.md).
+`npm run eval` measures the system over everyone in the database and writes `EVAL.md`:
 
-**The numbers below are a pipeline check on 8 fictional sample profiles (9 two-agent dates), not real people.** They'll be replaced after ingesting consenting real people with `npm run ingest:people`.
-
-| Metric | Result |
+| Metric | What it measures |
 | --- | --- |
-| Citation verification | 80 of 80 citations Gemini proposed verified verbatim against their source section (100%) |
-| Claim sources | 69.5% Instagram, 30.5% LinkedIn (hobbies: 27 vs 1; interests skew LinkedIn: 6 vs 12) |
-| Scores | 18 verdicts, mean 6.72, median 8, std dev 2.40, range 2–9 |
-| Second-date agreement | Both sides agreed on all 9 dates (78% mutual yes, 22% mutual no) |
-| Position bias | Speaking first: 6.89 vs second: 6.56 (+0.33) |
-| Consistency | 5 pairs re-simulated: mean score variance 0.82 (≈0.9 points); second-date votes stable in 5/5 |
-
-Caveats: this is a small set of fictional profiles, and scores cluster at 7–8, so the ranking leans on the mutual second-date bonus to separate candidates.
+| Citation verification | Share of the citations Gemini proposed that verified verbatim against their source section, per profile and overall |
+| Claim sources | Share of stored claims that came from Instagram vs LinkedIn |
+| Scores | Distribution of date scores, and how often both sides agree on a second date |
+| Position bias | Mean score given when speaking first vs second |
+| Consistency | Score variance when 5 random pairs are re-simulated (re-runs aren't stored) |
 
 ---
 
-## 👥 Real People vs Sample Data
+## 👥 Adding People
 
-PersonaMatch is meant to run on **real, consenting people**: each person agrees to have their public LinkedIn and Instagram used before they're added.
-
-* **Real people:** list them in `scripts/people.json` (copy `scripts/people.example.json`; the file is git-ignored because it holds real people's details), with `"consent": true` recorded only after they agreed, then run `npm run ingest:people`. It ingests everyone, then dates and ranks the whole real pool until the rankings are complete.
-* **Fictional samples:** `npm run seed:demo` adds 8 made-up profiles (`scripts/demo-profiles.json`) to test the pipeline without anyone's data. They're flagged `is_sample`, labelled "Fictional sample" in the UI, only date each other, and are excluded from `npm run eval`.
+PersonaMatch only includes **consenting people**: each person agrees to have their public LinkedIn and Instagram used before they're added. One at a time, use the form on the home page (the consent box is required). In bulk, list them in `scripts/people.json` (copy `scripts/people.example.json`; the file is git-ignored because it holds people's details), recording `"consent": true` only after each person agreed, then run `npm run ingest:people`. It ingests everyone, then dates and ranks the whole pool until the rankings are complete.
 
 ---
 
@@ -102,7 +94,7 @@ Defined in [`supabase/schema.sql`](supabase/schema.sql):
 
 | Table | Key Columns | Description |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats`, `is_sample` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
+| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
 | `dates` | `id`, `person_a_id`, `person_b_id`, `transcript`, `venue`, `shared_interest`, `score_a/b`, `reason_a/b`, `second_date_a/b` | One simulated date: the 6–8 turn conversation and both independent verdicts. |
 | `rankings` | `id`, `person_id`, `candidate_id`, `rank`, `compatibility_score`, `reasoning` | The latest leaderboard for each person (score out of 30). |
 | `scrape_cache` | `normalized_url`, `platform`, `data`, `fetched_at` | Apify results, reused for 24h. |
@@ -128,7 +120,6 @@ All tables have row-level security enabled with no policies, so the public anon 
 src/
 ├── app/
 │   ├── page.tsx                      # Home: ingest form + recent profiles
-│   ├── demo/page.tsx                 # Browse everyone, their dates and rankings
 │   ├── profile/[id]/page.tsx         # Persona, tags, evidence
 │   ├── profile/[id]/rankings/page.tsx# Leaderboard
 │   ├── profile/[id]/dates/page.tsx   # Dates + chat transcripts
@@ -146,7 +137,6 @@ src/
     └── supabase.ts                   # Service-role client
 supabase/schema.sql                   # Database schema
 scripts/setup-db.mjs                  # Applies the schema
-scripts/seed-demo.mjs                 # Seeds fictional sample profiles (scripts/demo-profiles.json)
 scripts/ingest-people.mjs             # Ingests consenting real people (scripts/people.json), then dates + ranks them
 scripts/eval.ts                       # Writes EVAL.md (npm run eval)
 ```

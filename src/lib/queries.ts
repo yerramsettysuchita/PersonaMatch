@@ -23,7 +23,7 @@ export type Profile = Omit<Preferences, "name"> & {
   created_at: string;
 };
 
-export type ProfileSummary = Pick<Profile, "id" | "name" | "created_at" | "is_sample">;
+export type ProfileSummary = Pick<Profile, "id" | "name" | "created_at">;
 
 export type RankingRow = {
   rank: number;
@@ -50,7 +50,7 @@ export async function getProfile(id: string): Promise<Profile | null> {
 
 export async function listProfiles(limit = 20): Promise<ProfileSummary[]> {
   return check(
-    await supabaseAdmin().from("profiles").select("id, name, created_at, is_sample").order("created_at", { ascending: false }).limit(limit)
+    await supabaseAdmin().from("profiles").select("id, name, created_at").order("created_at", { ascending: false }).limit(limit)
   );
 }
 
@@ -103,10 +103,9 @@ export async function getRankingCoverage(person: Profile, rankings: RankingRow[]
     check(
       await db
         .from("profiles")
-        .select("id, name, opted_in, looking_for, age, age_range_min, age_range_max, city, is_sample")
+        .select("id, name, opted_in, looking_for, age, age_range_min, age_range_max, city")
         .neq("id", person.id)
         .eq("opted_in", true)
-        .eq("is_sample", !!person.is_sample)
         .returns<(Preferences & { id: string })[]>()
     ),
     getDates(person.id),
@@ -119,38 +118,4 @@ export async function getRankingCoverage(person: Profile, rankings: RankingRow[]
     undated: eligible.filter((o) => !dated.has(o.id)).map((o) => o.name),
     unranked: eligible.filter((o) => dated.has(o.id) && !ranked.has(o.id)).map((o) => o.name),
   };
-}
-
-export type DemoPerson = Pick<Profile, "id" | "name" | "opted_in" | "is_sample" | "city" | "looking_for" | "hobbies"> & {
-  dates: number;
-  topMatch: string | null;
-  ranked: number;
-};
-
-// Everyone in the database with date counts and top match, for /demo.
-export async function listDemoPeople(): Promise<DemoPerson[]> {
-  const db = supabaseAdmin();
-  const [people, dates, rankings] = await Promise.all([
-    db.from("profiles").select("id, name, opted_in, is_sample, city, looking_for, hobbies").order("name"),
-    db.from("dates").select("person_a_id, person_b_id"),
-    db
-      .from("rankings")
-      .select("person_id, rank, candidate:profiles!rankings_candidate_id_fkey(name)")
-      .returns<{ person_id: string; rank: number; candidate: { name: string } | null }[]>(),
-  ]);
-  const profiles = check(people) as Pick<Profile, "id" | "name" | "opted_in" | "is_sample" | "city" | "looking_for" | "hobbies">[];
-  const dateCount = new Map<string, number>();
-  for (const d of check(dates) as { person_a_id: string; person_b_id: string }[]) {
-    for (const id of [d.person_a_id, d.person_b_id]) dateCount.set(id, (dateCount.get(id) ?? 0) + 1);
-  }
-  const rows = check(rankings);
-  return profiles.map((p) => {
-    const mine = rows.filter((r) => r.person_id === p.id);
-    return {
-      ...p,
-      dates: dateCount.get(p.id) ?? 0,
-      ranked: mine.length,
-      topMatch: mine.find((r) => r.rank === 1)?.candidate?.name ?? null,
-    };
-  });
 }
