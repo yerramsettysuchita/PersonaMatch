@@ -9,6 +9,8 @@ import {
   Lightbulb,
   MessageCircle,
   Mountain,
+  ShieldOff,
+  SlidersHorizontal,
   Trophy,
 } from "lucide-react";
 import Link from "next/link";
@@ -57,10 +59,19 @@ export default async function ProfilePage(props: PageProps<"/profile/[id]">) {
               <History className="size-4" />
               View Past Dates{dateCount > 0 && ` (${dateCount})`}
             </ButtonLink>
-            <RunDatesButton personId={id} />
+            {profile.opted_in && <RunDatesButton personId={id} />}
           </>
         }
       />
+
+      {!profile.opted_in && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+          <ShieldOff className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Not in the dating pool: this person hasn&apos;t opted in, so they won&apos;t be dated or ranked.
+          </span>
+        </div>
+      )}
 
       {rankings.length > 0 && (
         <Link
@@ -92,6 +103,8 @@ export default async function ProfilePage(props: PageProps<"/profile/[id]">) {
           </Card>
         ))}
       </div>
+
+      <PreferencesCard profile={profile} />
 
       {profile.communication_style && (
         <Card className="mt-4">
@@ -191,5 +204,41 @@ function EvidenceList({ evidence, profile }: { evidence: Evidence[]; profile: Pr
         );
       })}
     </ul>
+  );
+}
+
+const LOOKING_FOR_LABEL: Record<string, string> = {
+  "long-term": "Long-term relationship",
+  "short-term": "Something short-term",
+  "friendship-first": "Friendship first",
+  open: "Open to anything",
+};
+
+// Self-declared at ingest; shown so it's clear these were asked, not inferred.
+function PreferencesCard({ profile }: { profile: Profile }) {
+  const { looking_for, age, age_range_min: min, age_range_max: max, city } = profile;
+  const items = [
+    looking_for && { label: "Looking for", value: LOOKING_FOR_LABEL[looking_for] ?? looking_for },
+    age !== null && { label: "Age", value: String(age) },
+    (min !== null || max !== null) && { label: "Partner age", value: `${min ?? 18}–${max ?? "any"}` },
+    city && { label: "City", value: city },
+  ].filter((x): x is { label: string; value: string } => !!x);
+
+  return (
+    <Card className="mt-4">
+      <SectionTitle icon={<SlidersHorizontal className="size-4" />}>Declared preferences</SectionTitle>
+      {items.length ? (
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          {items.map((i) => (
+            <div key={i.label}>
+              <dt className="text-xs text-zinc-500 dark:text-zinc-400">{i.label}</dt>
+              <dd className="mt-0.5 text-sm font-medium text-zinc-900 dark:text-zinc-100">{i.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-sm text-zinc-400">None declared, so open to anyone in the pool.</p>
+      )}
+    </Card>
   );
 }

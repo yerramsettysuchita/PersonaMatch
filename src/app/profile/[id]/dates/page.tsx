@@ -59,7 +59,7 @@ export default async function DatesPage(props: PageProps<"/profile/[id]/dates">)
           <p className="max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
             Run dates to simulate a first date with every other profile.
           </p>
-          <RunDatesButton personId={id} />
+          {profile.opted_in && <RunDatesButton personId={id} />}
         </EmptyState>
       ) : (
         <DateList dates={items} />

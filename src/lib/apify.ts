@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Apify actor output is untyped third-party JSON, normalized below */
 import { ApifyClient } from "apify-client";
+import { supabaseAdmin } from "./supabase";
 
 const LINKEDIN_ACTOR = "harvestapi/linkedin-profile-scraper";
 const INSTAGRAM_ACTOR = "apify/instagram-profile-scraper";
@@ -68,10 +69,10 @@ export function instagramUsername(input: string): string | null {
 
 // ---------- Scrapers ----------
 
-// Successful scrapes are cached per server process, so retrying an ingest
-// (e.g. after pasting text for the platform that failed) doesn't pay twice.
-const cache = new Map<string, { at: number; data: unknown }>();
-const CACHE_TTL_MS = 60 * 60 * 1000;
+// Successful scrapes are cached in the scrape_cache table for 24h, so retrying
+// an ingest (e.g. after pasting text for the platform that failed) or
+// re-ingesting someone doesn't pay Apify twice, across serverless instances.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function client() {
   const token = process.env.APIFY_API_TOKEN;
@@ -91,18 +92,29 @@ async function runActor(actor: string, input: Record<string, unknown>) {
   return items[0] as Record<string, any> | undefined;
 }
 
-async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data as T;
-  const data = await load();
-  cache.set(key, { at: Date.now(), data });
+async function cached<T>(platform: Platform, normalizedUrl: string, load: () => Promise<T>): Promise<T> {
+  const db = supabaseAdmin();
+  const { data: hit, error } = await db
+    .from("scrape_cache")
+    .select("data")
+    .eq("normalized_url", normalizedUrl)
+    .gt("fetched_at", new Date(Date.now() - CACHE_TTL_MS).toISOString())
+    .maybeSingle();
+  if (error) console.warn("[apify] cache read failed, scraping:", error.message);
+  if (hit) return hit.data as T;
+
+  const data = await load(); // throws on failure, so failures are never cached
+  const { error: writeError } = await db
+    .from("scrape_cache")
+    .upsert({ normalized_url: normalizedUrl, platform, data, fetched_at: new Date().toISOString() });
+  if (writeError) console.warn("[apify] cache write failed:", writeError.message);
   return data;
 }
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
 export function scrapeLinkedIn(url: string): Promise<LinkedInData> {
-  return cached(`li:${url}`, async () => {
+  return cached("linkedin", url.toLowerCase(), async () => {
     const p = await runActor(LINKEDIN_ACTOR, {
       profileScraperMode: "Profile details no email ($4 per 1k)",
       queries: [url],
@@ -145,10 +157,16 @@ export function scrapeLinkedIn(url: string): Promise<LinkedInData> {
 }
 
 export function scrapeInstagram(username: string): Promise<InstagramData> {
-  return cached(`ig:${username.toLowerCase()}`, async () => {
+  return cached("instagram", `https://www.instagram.com/${username.toLowerCase()}`, async () => {
     const p = await runActor(INSTAGRAM_ACTOR, { usernames: [username] });
     if (!p || p.error || !p.username) {
       throw new Error(p?.errorDescription ?? p?.error ?? "Instagram profile not found");
+    }
+    // Private or empty accounts give the LLM nothing to work with: fail so the
+    // ingest falls back to pasted text (422 needs_manual).
+    if (p.private) throw new Error("Instagram account is private");
+    if (!str(p.biography) && !(p.latestPosts ?? []).length) {
+      throw new Error("Instagram account has no bio and no posts");
     }
     return {
       source: "apify",

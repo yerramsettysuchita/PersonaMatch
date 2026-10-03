@@ -1,4 +1,5 @@
 import { createDate, PERSONA_COLUMNS, type PersonaRow } from "@/lib/dates";
+import { pairBlockers } from "@/lib/matching";
 import { supabaseAdmin } from "@/lib/supabase";
 
 // One Gemini call; usually 10-30s, up to ~145s if every fallback in generateJSON is used.
@@ -7,6 +8,7 @@ export const maxDuration = 150;
 // POST /api/date
 // Body: { person_a_id, person_b_id }
 // Simulates a first date between two ingested profiles and stores it in `dates`.
+// Both must be opted in and pass each other's declared preferences (422 otherwise).
 export async function POST(request: Request) {
   let body: { person_a_id?: unknown; person_b_id?: unknown };
   try {
@@ -44,6 +46,11 @@ export async function POST(request: Request) {
   if (!a || !b) {
     const missing = [!a && person_a_id, !b && person_b_id].filter(Boolean);
     return Response.json({ error: "Profile not found", missing }, { status: 404 });
+  }
+
+  const blockers = pairBlockers(a, b);
+  if (blockers.length > 0) {
+    return Response.json({ error: "These two can't be matched", reasons: blockers }, { status: 422 });
   }
 
   try {

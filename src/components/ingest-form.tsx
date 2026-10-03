@@ -1,6 +1,17 @@
 "use client";
 
-import { AlertTriangle, AtSign, Briefcase, CheckCircle2, ClipboardPaste, Loader2, Sparkles, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  AtSign,
+  Briefcase,
+  CheckCircle2,
+  ClipboardPaste,
+  Loader2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +19,15 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type Platform = "linkedin" | "instagram";
+type Prefs = { looking_for: string; age: string; age_range_min: string; age_range_max: string; city: string };
+
+const LOOKING_FOR_OPTIONS = [
+  { value: "", label: "Not specified" },
+  { value: "long-term", label: "Long-term relationship" },
+  { value: "short-term", label: "Something short-term" },
+  { value: "friendship-first", label: "Friendship first" },
+  { value: "open", label: "Open to anything" },
+];
 type SourceStatus = { status: "scraped" | "pasted" | "failed"; error?: string };
 
 const PLATFORMS: Record<Platform, { label: string; icon: typeof Briefcase; placeholder: string; pastePlaceholder: string }> = {
@@ -39,9 +59,13 @@ export function IngestForm() {
   const [urls, setUrls] = useState<Record<Platform, string>>({ linkedin: "", instagram: "" });
   const [texts, setTexts] = useState<Record<Platform, string>>({ linkedin: "", instagram: "" });
   const [name, setName] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [prefs, setPrefs] = useState<Prefs>({ looking_for: "", age: "", age_range_min: "", age_range_max: "", city: "" });
+  const setPref = (key: keyof Prefs, value: string) => setPrefs((p) => ({ ...p, [key]: value }));
   const [manual, setManual] = useState<Platform[]>([]);
   const [sources, setSources] = useState<Partial<Record<Platform, SourceStatus>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<{ linkedin_name: string; instagram_name: string } | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
 
@@ -58,7 +82,17 @@ export function IngestForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    await submit(false);
+  }
+
+  async function submit(confirmIdentity: boolean) {
     setError(null);
+    setIdentity(null);
+
+    if (!consent) {
+      setError("This person must consent before we read their profiles. Tick the consent box to continue.");
+      return;
+    }
 
     for (const p of ["linkedin", "instagram"] as const) {
       const hasText = manual.includes(p) && texts[p].trim().length >= 20;
@@ -71,8 +105,14 @@ export function IngestForm() {
     setSeconds(0);
     setStartedAt(Date.now());
     try {
-      const body: Record<string, string> = {};
+      const body: Record<string, string | number | boolean> = { opted_in: true };
+      if (confirmIdentity) body.confirm_identity = true;
       if (name.trim()) body.name = name.trim();
+      if (prefs.looking_for) body.looking_for = prefs.looking_for;
+      if (prefs.city.trim()) body.city = prefs.city.trim();
+      for (const key of ["age", "age_range_min", "age_range_max"] as const) {
+        if (prefs[key].trim()) body[key] = Number(prefs[key]);
+      }
       for (const p of ["linkedin", "instagram"] as const) {
         if (urls[p].trim()) body[`${p}_url`] = urls[p].trim();
         if (manual.includes(p) && texts[p].trim()) body[`${p}_text`] = texts[p].trim();
@@ -93,7 +133,11 @@ export function IngestForm() {
       if (res.status === 422 && Array.isArray(data.needs_manual)) {
         setManual((m) => [...new Set([...m, ...(data.needs_manual as Platform[])])]);
       }
-      setError(data.error ?? `Something went wrong (HTTP ${res.status}).`);
+      if (res.status === 409 && data.identity_mismatch) {
+        setIdentity(data.identity_mismatch);
+      } else {
+        setError(data.error ?? `Something went wrong (HTTP ${res.status}).`);
+      }
     } catch {
       setError("Couldn't reach the server. Is `npm run dev` still running?");
     }
@@ -174,6 +218,124 @@ export function IngestForm() {
           </div>
         )}
 
+        <fieldset className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <legend className="flex items-center gap-2 px-1 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            <SlidersHorizontal className="size-4 text-zinc-400" />
+            Their preferences <span className="font-normal text-zinc-400">(optional, asked, never guessed)</span>
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              Looking for
+              <select
+                value={prefs.looking_for}
+                onChange={(e) => setPref("looking_for", e.target.value)}
+                disabled={busy}
+                className={inputClasses}
+              >
+                {LOOKING_FOR_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              City
+              <input
+                type="text"
+                placeholder="e.g. Hyderabad"
+                value={prefs.city}
+                onChange={(e) => setPref("city", e.target.value)}
+                disabled={busy}
+                className={inputClasses}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              Their age
+              <input
+                type="number"
+                min={18}
+                max={120}
+                placeholder="18+"
+                value={prefs.age}
+                onChange={(e) => setPref("age", e.target.value)}
+                disabled={busy}
+                className={inputClasses}
+              />
+            </label>
+            <div className="flex flex-col gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              Partner age range
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={18}
+                  max={120}
+                  aria-label="Minimum partner age"
+                  placeholder="Min"
+                  value={prefs.age_range_min}
+                  onChange={(e) => setPref("age_range_min", e.target.value)}
+                  disabled={busy}
+                  className={inputClasses}
+                />
+                <span>–</span>
+                <input
+                  type="number"
+                  min={18}
+                  max={120}
+                  aria-label="Maximum partner age"
+                  placeholder="Max"
+                  value={prefs.age_range_max}
+                  onChange={(e) => setPref("age_range_max", e.target.value)}
+                  disabled={busy}
+                  className={inputClasses}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Matches must fit both people&apos;s preferences. Blank fields mean no restriction, but setting an age range only
+            matches people who gave their age.
+          </p>
+        </fieldset>
+
+        <label className="flex items-start gap-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            disabled={busy}
+            className="mt-0.5 size-4 shrink-0 accent-emerald-600"
+          />
+          <span>
+            <span className="flex items-center gap-1.5 font-medium">
+              <ShieldCheck className="size-4" />
+              This person has agreed to be included
+            </span>
+            Required. I am this person, or they have agreed to have their public LinkedIn and Instagram read and to
+            join the PersonaMatch dating pool. They are 18 or older and single.
+          </span>
+        </label>
+
+        {identity && (
+          <div role="alert" className="flex flex-col gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+            <span className="flex gap-2">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <strong>These may not be the same person.</strong> LinkedIn says &ldquo;{identity.linkedin_name}&rdquo; but
+                Instagram says &ldquo;{identity.instagram_name}&rdquo;. Check both links before continuing.
+              </span>
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => submit(true)} disabled={busy}>
+                Yes, it&apos;s the same person, continue
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setIdentity(null)} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div role="alert" className="flex gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-800 dark:bg-rose-500/10 dark:text-rose-300">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -181,7 +343,7 @@ export function IngestForm() {
           </div>
         )}
 
-        <Button type="submit" disabled={busy} className="py-3 text-base">
+        <Button type="submit" disabled={busy || !consent} className="py-3 text-base">
           {busy ? (
             <>
               <Loader2 className="size-4 animate-spin" />

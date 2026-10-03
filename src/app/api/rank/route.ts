@@ -1,5 +1,7 @@
 import { createDate, PERSONA_COLUMNS, type DateRow, type PersonaRow } from "@/lib/dates";
 import { generateRankingReasons } from "@/lib/llm";
+import { pairBlockers } from "@/lib/matching";
+import { rateLimit } from "@/lib/rate-limit";
 import type { RankedDateSummary } from "@/lib/prompts";
 import { supabaseAdmin } from "@/lib/supabase";
 
@@ -7,7 +9,10 @@ export const maxDuration = 300;
 
 const MAX_NEW_DATES = 10; // missing dates simulated per request; call again to fill in more
 const BATCH_SIZE = 3; // concurrent Gemini calls (free tier is ~15 RPM)
-const DATE_PHASE_BUDGET_MS = 120_000; // don't start a new batch after this; a batch can take ~145s worst case
+// A two-agent date is 11 Gemini calls (~15s measured on flash-lite models;
+// slower when models are overloaded and calls fall back). Don't start a new
+// batch after this, so even a slow batch finishes inside maxDuration.
+const DATE_PHASE_BUDGET_MS = 150_000;
 const RESPONSE_DEADLINE_MS = 280_000; // fall back to template reasoning rather than exceed maxDuration
 const MUTUAL_BONUS = 10;
 
@@ -18,9 +23,11 @@ type Candidate = RankedDateSummary & {
 
 // POST /api/rank
 // Body: { person_id }
-// Ranks every other profile for person_id by how their simulated date went.
-// Candidates without a date yet get one simulated first (up to MAX_NEW_DATES
-// per request, BATCH_SIZE at a time). Replaces person_id's rows in `rankings`.
+// Ranks every other opted-in profile for person_id by how their simulated date
+// went. Pairs failing either side's declared preferences (city, looking_for,
+// age range) are skipped entirely and listed in `filtered_out`. Candidates
+// without a date yet get one simulated first (up to MAX_NEW_DATES per request,
+// BATCH_SIZE at a time). Replaces person_id's rows in `rankings`.
 export async function POST(request: Request) {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
@@ -35,6 +42,9 @@ export async function POST(request: Request) {
   if (typeof personId !== "string") {
     return Response.json({ error: "person_id is required" }, { status: 400 });
   }
+
+  const limited = await rateLimit(request, "rank");
+  if (limited) return limited;
 
   const db = supabaseAdmin();
 
@@ -51,9 +61,12 @@ export async function POST(request: Request) {
     return Response.json({ error: `Database error: ${personError.message}` }, { status: 500 });
   }
   if (!person) return Response.json({ error: "Profile not found" }, { status: 404 });
+  if (!person.opted_in) {
+    return Response.json({ error: `${person.name} hasn't opted in to the dating pool` }, { status: 422 });
+  }
 
   const [othersRes, datesRes] = await Promise.all([
-    db.from("profiles").select(PERSONA_COLUMNS).neq("id", personId).returns<PersonaRow[]>(),
+    db.from("profiles").select(PERSONA_COLUMNS).neq("id", personId).eq("opted_in", true).returns<PersonaRow[]>(),
     db
       .from("dates")
       .select("*")
@@ -65,7 +78,13 @@ export async function POST(request: Request) {
     const message = (othersRes.error ?? datesRes.error)!.message;
     return Response.json({ error: `Database error: ${message}` }, { status: 500 });
   }
-  const others = othersRes.data;
+  // Hard filters: only pairs that pass both people's declared preferences.
+  const filteredOut: { candidate_id: string; name: string; reasons: string[] }[] = [];
+  const others = othersRes.data.filter((o) => {
+    const reasons = pairBlockers(person, o);
+    if (reasons.length) filteredOut.push({ candidate_id: o.id, name: o.name, reasons });
+    return reasons.length === 0;
+  });
 
   // Latest date per candidate (rows are newest first).
   const dateByCandidate = new Map<string, DateRow>();
@@ -170,6 +189,8 @@ export async function POST(request: Request) {
     new_dates: newDates,
     // Candidates still without a date (over MAX_NEW_DATES or out of time): call /api/rank again.
     not_dated: notDated,
+    // Skipped because the pair fails someone's declared preferences.
+    filtered_out: filteredOut,
     failed,
   });
 }

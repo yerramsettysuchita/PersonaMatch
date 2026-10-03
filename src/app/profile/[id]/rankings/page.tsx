@@ -1,4 +1,4 @@
-import { History, Trophy } from "lucide-react";
+import { AlertTriangle, History, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RunDatesButton } from "@/components/run-dates-button";
@@ -6,7 +6,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { CompatibilityMeter } from "@/components/ui/score";
-import { getProfile, getRankings } from "@/lib/queries";
+import { getProfile, getRankingCoverage, getRankings } from "@/lib/queries";
 import { cn, formatDate } from "@/lib/utils";
 
 const MEDALS = [
@@ -20,6 +20,8 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
   const profile = await getProfile(id);
   if (!profile) notFound();
   const rankings = await getRankings(id);
+  const coverage = profile.opted_in ? await getRankingCoverage(profile, rankings) : null;
+  const missing = coverage ? coverage.undated.length + coverage.unranked.length : 0;
 
   return (
     <div>
@@ -28,7 +30,9 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
         backLabel={profile.name}
         title={`Best matches for ${profile.name}`}
         subtitle={
-          rankings.length > 0
+          rankings.length > 0 && coverage && missing === 0
+            ? `All ${coverage.eligible} eligible candidates ranked ${formatDate(rankings[0].created_at)} · score = both date ratings + 10 if both want a second date`
+            : rankings.length > 0
             ? `Ranked ${formatDate(rankings[0].created_at)} · score = both date ratings + 10 if both want a second date`
             : undefined
         }
@@ -38,17 +42,42 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
               <History className="size-4" />
               Dates
             </ButtonLink>
-            {rankings.length > 0 && <RunDatesButton personId={id} label="Re-rank" />}
+            {profile.opted_in && rankings.length > 0 && <RunDatesButton personId={id} label="Re-rank" />}
           </>
         }
       />
+
+      {!profile.opted_in && (
+        <p className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+          {profile.name} hasn&apos;t opted in to the dating pool, so they can&apos;t be ranked.
+        </p>
+      )}
+
+      {coverage && rankings.length > 0 && missing > 0 && (
+        <div
+          role="status"
+          className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          <div className="flex gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <div>
+              <p className="font-medium">
+                Incomplete: {rankings.length} of {coverage.eligible} eligible candidates ranked.
+              </p>
+              {coverage.undated.length > 0 && <p>Not dated yet: {coverage.undated.join(", ")}.</p>}
+              {coverage.unranked.length > 0 && <p>Dated but not in this ranking: {coverage.unranked.join(", ")}.</p>}
+            </div>
+          </div>
+          <RunDatesButton personId={id} label="Retry" />
+        </div>
+      )}
 
       {rankings.length === 0 ? (
         <EmptyState icon={<Trophy className="size-10" />} title="No rankings yet">
           <p className="max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
             Run dates to simulate a first date with every other profile and rank them.
           </p>
-          <RunDatesButton personId={id} />
+          {profile.opted_in && <RunDatesButton personId={id} />}
         </EmptyState>
       ) : (
         <ol className="flex flex-col gap-3">

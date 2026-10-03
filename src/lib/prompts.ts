@@ -7,39 +7,115 @@ export type PersonaProfile = {
   interests: string[];
   values: string[];
   communication_style: string | null;
+  // Self-declared at ingest; lets the planner pick a venue they can both reach.
+  city?: string | null;
+  // Used to tag each trait with where it came from (personal vs professional).
+  evidence?: { category: string; claim: string; source: "linkedin" | "instagram" }[];
 };
 
 function describePersona(label: string, p: PersonaProfile) {
-  const list = (items: string[]) => (items.length ? items.join(", ") : "(unknown)");
+  const sourceOf = (category: string, claim: string) => {
+    const sources = new Set(
+      (p.evidence ?? []).filter((e) => e.category === category && e.claim === claim).map((e) => e.source)
+    );
+    if (sources.has("instagram")) return "personal, Instagram";
+    if (sources.has("linkedin")) return "professional, LinkedIn";
+    return null;
+  };
+  const list = (category: string, items: string[]) =>
+    items.length
+      ? items
+          .map((item) => {
+            const src = sourceOf(category, item);
+            return src ? `${item} [${src}]` : item;
+          })
+          .join(", ")
+      : "(unknown)";
   return `${label}: ${p.name}
-- Needs in a partner: ${list(p.needs)}
-- Hobbies: ${list(p.hobbies)}
-- Interests: ${list(p.interests)}
-- Values: ${list(p.values)}
+- Needs in a partner: ${list("needs", p.needs)}
+- Hobbies: ${list("hobbies", p.hobbies)}
+- Interests: ${list("interests", p.interests)}
+- Values: ${list("values", p.values)}
 - Communication style: ${p.communication_style || "(unknown)"}`;
 }
 
-export function simulateDatePrompt(a: PersonaProfile, b: PersonaProfile) {
-  return `Simulate a first date between two people, based only on their personas below.
+// Personal life outweighs career overlap. In the first test run, dates
+// between people in tech kept "bonding" over AI and smart glasses (their
+// jobs) even when one person's real hobbies were pottery and trekking.
+const PERSONAL_OVER_PROFESSIONAL = `What makes a good match, in priority order:
+1. Shared or complementary hobbies, personal interests and values, especially those tagged [personal, Instagram]: how they actually spend their free time and what they care about.
+2. Compatible needs and communication styles.
+3. Last and least: same profession, industry or career topics [professional, LinkedIn]. Two people in the same field are not a match just because of that.`;
+
+export type NamedTurn = { name: string; text: string };
+
+const renderTranscript = (turns: NamedTurn[]) =>
+  turns.length ? turns.map((t) => `${t.name}: ${t.text}`).join("\n") : "(nobody has spoken yet)";
+
+// The only prompt that sees both personas: it sets the scene, nothing more.
+export function datePlannerPrompt(a: PersonaProfile, b: PersonaProfile) {
+  return `You are planning a first date between two people, based only on their personas below.
 
 ${describePersona("Person A", a)}
 
 ${describePersona("Person B", b)}
 
-Generate:
-- shared_interest: the one thing from their personas they genuinely bond over. If they share nothing obvious, pick the closest overlap and say what it is.
-- venue: a specific, creative date spot built around that shared interest (e.g. "a night kayak tour under the city bridges", not "a cafe").
-- transcript: a natural 6-8 turn conversation at the venue, alternating speakers, starting with Person A.
-  - Each person must speak exactly in their communication style (tone, formality, humor, emoji use) and talk from their own hobbies, interests and values.
-  - Let real friction show if their needs or values clash. Don't make it artificially perfect.
-  - Each turn is 1-3 sentences.
-- evaluation_a: Person A's honest private verdict after the date, judged against A's own needs and values.
-  - score: 0-10 (0 = awful, 5 = neutral, 10 = perfect match).
-  - reason: 1-2 sentences in A's voice, citing specific moments from the conversation.
-  - second_date: whether A wants a second date.
-- evaluation_b: the same, from Person B's perspective.
+${PERSONAL_OVER_PROFESSIONAL}
 
-Score each side independently; the two people can feel differently about the same date.`;
+${
+    a.city && b.city && a.city.toLowerCase() === b.city.toLowerCase()
+      ? `Both live in ${a.city}, so the venue must be in or near ${a.city}.\n\n`
+      : ""
+  }Return:
+- shared_interest: the one personal thing they're most likely to bond over: a hobby, interest or value from their personal lives. Only fall back to work or industry if they truly share nothing personal, and say so.
+- venue: a specific, creative date spot built around that shared interest (e.g. "a night kayak tour under the city bridges", not "a cafe").`;
+}
+
+// One agent's next line. It sees only its own persona, the other person's
+// name, the venue and the conversation so far.
+export function agentTurnPrompt(
+  self: PersonaProfile,
+  otherName: string,
+  venue: string,
+  transcript: NamedTurn[],
+  turnsLeft: number
+) {
+  const opening = transcript.length === 0;
+  return `You are ${self.name}, on a first date with ${otherName} at: ${venue}.
+You only know about ${otherName} what they've said on this date.
+
+Who you are:
+${describePersona("You", self)}
+
+Conversation so far:
+${renderTranscript(transcript)}
+
+Write ${self.name}'s next line${opening ? " to open the conversation" : ""}.
+- 1-3 sentences, exactly in your communication style (tone, formality, humor, emoji use).
+- Talk from your own hobbies, interests and values; like a real first date, mostly about life outside work.
+- React to what ${otherName} just said. Ask questions to find out who they are; don't assume things they haven't told you.
+- Be honest: if something they said doesn't sit well with your needs or values, it's fine to show it.${
+    turnsLeft <= 1 ? "\n- This is the last line of the date: wrap up naturally." : ""
+  }
+- Return only the words you say, without your name or quotes.`;
+}
+
+// One agent's private verdict, from its own persona and the transcript only.
+export function agentEvaluationPrompt(self: PersonaProfile, otherName: string, venue: string, transcript: NamedTurn[]) {
+  return `You are ${self.name}. You just had a first date with ${otherName} at: ${venue}.
+
+Who you are:
+${describePersona("You", self)}
+
+The full conversation:
+${renderTranscript(transcript)}
+
+${PERSONAL_OVER_PROFESSIONAL}
+
+Give your honest, private verdict, judged against your own needs and values using the priorities above:
+- score: 0-10 (0 = awful, 5 = neutral, 10 = perfect match). Be honest; most first dates are not a 9.
+- reason: 1-2 sentences in your own voice that cite a specific moment from the conversation.
+- second_date: whether you want a second date.`;
 }
 
 export function extractPersonaPrompt(name: string, sections: Section[]) {
@@ -63,6 +139,7 @@ Extract:
   - quote: a short verbatim excerpt (under 25 words) from that section.
 
 Rules:
+- Never infer or state sensitive attributes: age, gender, sexual orientation, relationship status, religion, caste, ethnicity, health or politics. Those are only ever self-declared, never guessed.
 - Only make claims the text supports. Fewer, well-grounded items beat many guesses. Do not use outside knowledge about this person.
 - Professional achievements are not hobbies. Infer needs and values carefully from what they post and how they describe themselves.
 - Keep each item short (1-5 words).`;
@@ -93,7 +170,7 @@ Mutual second date: ${d.mutual_second_date ? "yes" : "no"}`
 
   return `${name} went on simulated first dates with the candidates below. For each candidate, write a one-line reasoning (max 20 words) explaining how good a match they are for ${name}, e.g. "Mutual match with high scores on shared family values" or "One-sided: ${name} loved the hiking talk, but the candidate found ${name} too formal".
 
-Mention whether interest was mutual and the strongest specific reason from the verdicts. Return one entry per candidate_id.
+Mention whether interest was mutual and the strongest specific reason from the verdicts. Prefer personal reasons (shared hobbies, interests, values, how they connected) over shared profession or industry; only cite work overlap if it's genuinely all they had in common. Return one entry per candidate_id.
 
 ${body}`;
 }

@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { simulateDate } from "./llm";
+import type { Preferences } from "./matching";
 import type { PersonaProfile } from "./prompts";
 
-export const PERSONA_COLUMNS = "id, name, needs, hobbies, interests, values, communication_style";
+export const PERSONA_COLUMNS =
+  "id, name, needs, hobbies, interests, values, communication_style, evidence, " +
+  "opted_in, looking_for, age, age_range_min, age_range_max, city";
 
-export type PersonaRow = PersonaProfile & { id: string };
+export type PersonaRow = PersonaProfile & Preferences & { id: string };
 
 export type DateRow = {
   id: string;
@@ -22,9 +25,16 @@ export type DateRow = {
   created_at: string;
 };
 
-// Simulates a date between two profiles and stores it in `dates`.
-export async function createDate(db: SupabaseClient, a: PersonaRow, b: PersonaRow): Promise<DateRow> {
+// Simulates a two-agent date between two profiles and stores it in `dates`.
+// Which person is stored as person_a is randomised (and simulateDate picks a
+// random first speaker), so the person being ranked isn't always side A.
+export async function createDate(db: SupabaseClient, x: PersonaRow, y: PersonaRow): Promise<DateRow> {
+  const [a, b] = Math.random() < 0.5 ? [x, y] : [y, x];
   const sim = await simulateDate(a, b);
+  console.log(
+    `[date] ${a.name} × ${b.name}: ${(sim.duration_ms / 1000).toFixed(1)}s, ` +
+      `${sim.transcript.length} turns, ${sim.first_speaker === "a" ? a.name : b.name} spoke first`
+  );
   const { data, error } = await db
     .from("dates")
     .insert({

@@ -2,7 +2,7 @@
 
 PersonaMatch is an automated, agentic dating platform where AI personas date on behalf of real people. By scraping public LinkedIn and Instagram profiles, the system extracts each person's needs, hobbies, interests, values, and communication style. These personas then go on simulated multi-turn first dates, score each other independently, and produce a ranked leaderboard of the most compatible matches.
 
-Built for speed and depth, PersonaMatch uses parallel web scraping and single-shot LLM simulations to turn messy social profiles into measurable compatibility.
+Each date is a real two-agent conversation: every persona is its own Gemini agent that only knows its own profile and what the other person says on the date, then privately decides whether it wants a second date.
 
 ---
 
@@ -23,11 +23,14 @@ graph TD
         D -->|Persona + cited evidence| E[(Supabase PostgreSQL)]:::db
     end
 
-    subgraph Dating["Dating Engine · /api/date"]
-        E --> F[Persona A]:::core
-        E --> G[Persona B]:::core
-        F & G --> H{Gemini Date Simulator}:::llm
-        H -->|6-8 turn transcript + two independent verdicts| I[(dates table)]:::db
+    subgraph Dating["Two-Agent Dating · /api/date"]
+        E --> F[Agent A: only A's persona]:::core
+        E --> G[Agent B: only B's persona]:::core
+        F & G --> P{Planner: picks venue}:::llm
+        P --> T{8 alternating turns, 1 Gemini call each}:::llm
+        T --> VA{A's private verdict}:::llm
+        T --> VB{B's private verdict}:::llm
+        VA & VB --> I[(dates table)]:::db
     end
 
     subgraph Ranking["Ranking · /api/rank"]
@@ -41,11 +44,32 @@ graph TD
 
 ## ✨ Core Features
 
-* **Evidence-Based Personas:** Every extracted need, hobby, interest, and value is linked to a verbatim quote from a specific LinkedIn section or Instagram post. Claims whose citation doesn't match a real section are dropped, and each quote is checked against its source.
+* **Consent First:** Nobody is scraped or stored unless they opt in. Preferences (looking for, age, partner age range, city) are self-declared at ingest and never inferred from social media, and they act as hard filters: a pair that fails either person's preferences is never dated or ranked.
+* **Evidence-Based Personas:** Every stored need, hobby, interest, and value is linked to a quote from a specific LinkedIn section or Instagram post. A citation is kept only if its section exists and its quote appears verbatim in that section (ignoring case and whitespace); claims left without a verified citation are dropped.
 * **Fallback Ingestion:** If a live scrape fails (private/deleted account, blocked scraper), the UI switches that platform to a manual text-paste mode, so the pipeline never breaks. Successful scrapes are cached so a retry doesn't pay for them twice.
-* **Autonomous Dating Simulation:** Each persona speaks in its human's communication style (corporate keynote vs. casual emojis), and each side independently scores the date and decides whether it wants a second one.
+* **True Two-Agent Dates:** A planner call (the only one that sees both personas) picks the venue. Then the two agents alternate for 8 turns, one Gemini call per turn; each agent's prompt holds only its own persona, the other person's name, the venue and the transcript so far, so they learn about each other only by talking. Afterwards each agent privately scores the date (0–10, citing a moment) and decides on a second date. Who opens, and who is stored as person A, is randomised.
+* **Personal Over Professional:** Dates and rankings weight hobbies, interests and values (mostly from Instagram) above shared profession or industry (LinkedIn), because in our first test run every tech-industry pair "bonded" over AI and smart glasses, even when one person's real hobbies were pottery and trekking.
 * **Transparent Ranking:** `compatibility_score = score_a + score_b + 10 if both want a second date` (0–30), with a one-line Gemini-written reason per candidate.
-* **Built for Time Limits:** Missing dates run in batches of 3 (up to 10 per request) inside a time budget that keeps every route under `maxDuration = 300`. If Gemini is overloaded, requests fall back across several Flash models automatically.
+* **Built for Limits:** A date is 11 Gemini calls (~15s measured). Missing dates run 3 at a time, up to 10 per request, inside a time budget that keeps `/api/rank` under `maxDuration = 300`; the "Run Dates" button repeats the request until everyone is dated and the leaderboard flags anything still missing. Gemini's free tier allows ~20 requests per model per day, so calls rotate through a pool of Flash and Flash-Lite models, skipping any that are out of quota or overloaded.
+* **Ingest Safeguards:** Scrapes are cached in Supabase for 24h; re-ingesting a LinkedIn URL updates that profile; private or empty Instagram accounts fall back to pasted text; and if the LinkedIn and Instagram names clearly differ, the UI asks you to confirm it's the same person.
+* **Abuse Protection:** Per-IP limits (5 ingests and 30 rank calls per hour, stored hashed in Supabase) and a hard cap of 60 profiles.
+
+---
+
+## 📊 Evaluation
+
+`npm run eval` measures the system over everything in the database and writes [EVAL.md](EVAL.md). Latest run (8 fictional demo profiles, 9 two-agent dates):
+
+| Metric | Result |
+| --- | --- |
+| Citation verification | 80 of 80 citations Gemini proposed verified verbatim against their source section (100%) |
+| Claim sources | 69.5% Instagram, 30.5% LinkedIn (hobbies: 27 vs 1; interests skew LinkedIn: 6 vs 12) |
+| Scores | 18 verdicts, mean 6.72, median 8, std dev 2.40, range 2–9 |
+| Second-date agreement | Both sides agreed on all 9 dates (78% mutual yes, 22% mutual no) |
+| Position bias | Speaking first: 6.89 vs second: 6.56 (+0.33) |
+| Consistency | 5 pairs re-simulated: mean score variance 0.82 (≈0.9 points); second-date votes stable in 5/5 |
+
+Caveats: this is a small sample of fictional profiles, and scores cluster at 7–8, so the ranking leans on the mutual second-date bonus to separate candidates.
 
 ---
 
@@ -57,7 +81,7 @@ graph TD
 | **Styling** | Tailwind CSS 4 & Lucide icons | Responsive, dark-mode-aware UI |
 | **Database** | Supabase (PostgreSQL) | Persistent storage; RLS enabled, server-only access via the service-role key |
 | **Web Scraping** | Apify Actors | LinkedIn and Instagram public profile extraction |
-| **LLM Engine** | Google Gemini 3.8 Flash (with 3.6 / 3.7 / 3.1-lite fallbacks) | Structured JSON extraction, date simulation, ranking reasons |
+| **LLM Engine** | Google Gemini Flash / Flash-Lite pool (3.8 Flash first for extraction) | Structured JSON extraction, two-agent dates, verdicts, ranking reasons |
 
 ---
 
@@ -67,11 +91,13 @@ Defined in [`supabase/schema.sql`](supabase/schema.sql):
 
 | Table | Key Columns | Description |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence` | The parsed persona, its source citations, and the cleaned raw scrape data. |
+| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
 | `dates` | `id`, `person_a_id`, `person_b_id`, `transcript`, `venue`, `shared_interest`, `score_a/b`, `reason_a/b`, `second_date_a/b` | One simulated date: the 6–8 turn conversation and both independent verdicts. |
 | `rankings` | `id`, `person_id`, `candidate_id`, `rank`, `compatibility_score`, `reasoning` | The latest leaderboard for each person (score out of 30). |
+| `scrape_cache` | `normalized_url`, `platform`, `data`, `fetched_at` | Apify results, reused for 24h. |
+| `rate_limits` | `bucket`, `ip_hash`, `created_at` | Per-IP request log for rate limiting (IPs stored as SHA-256 hashes). |
 
-All three tables have row-level security enabled with no policies, so the public anon key can't read or write them; only server routes using the service-role key can.
+All tables have row-level security enabled with no policies, so the public anon key can't read or write them; only server routes using the service-role key can.
 
 ---
 
@@ -79,9 +105,9 @@ All three tables have row-level security enabled with no policies, so the public
 
 | Route | Body | What it does |
 | --- | --- | --- |
-| `POST /api/ingest` | `{ linkedin_url, instagram_url, name?, linkedin_text?, instagram_text? }` | Scrapes both profiles (or uses pasted text), extracts the persona, saves it. Returns `422` with `needs_manual` if a scrape fails. |
-| `POST /api/date` | `{ person_a_id, person_b_id }` | Simulates one date and saves it. |
-| `POST /api/rank` | `{ person_id }` | Runs missing dates (up to 10 per call, 3 at a time), scores every candidate, and replaces that person's rankings. |
+| `POST /api/ingest` | `{ opted_in: true, linkedin_url, instagram_url, name?, linkedin_text?, instagram_text?, looking_for?, age?, age_range_min?, age_range_max?, city?, confirm_identity? }` | Requires consent (`400` otherwise). Scrapes both profiles (or uses pasted text), extracts the persona, saves it with the declared preferences; re-ingesting a LinkedIn URL updates that profile (`200`). `422` + `needs_manual` if a scrape fails or Instagram is private/empty, `409` if the two names clearly differ, `429` over the rate limit, `403` when the pool is full. |
+| `POST /api/date` | `{ person_a_id, person_b_id }` | Runs one two-agent date and saves it. Returns `422` with `reasons` if either person isn't opted in or the pair fails someone's preferences. |
+| `POST /api/rank` | `{ person_id }` | Considers only opted-in candidates that pass both people's preferences (the rest are listed in `filtered_out`), runs missing dates (up to 10 per call, 3 at a time), scores them, and replaces that person's rankings. |
 
 ---
 
@@ -91,6 +117,7 @@ All three tables have row-level security enabled with no policies, so the public
 src/
 ├── app/
 │   ├── page.tsx                      # Home: ingest form + recent profiles
+│   ├── demo/page.tsx                 # Browse everyone, their dates and rankings
 │   ├── profile/[id]/page.tsx         # Persona, tags, evidence
 │   ├── profile/[id]/rankings/page.tsx# Leaderboard
 │   ├── profile/[id]/dates/page.tsx   # Dates + chat transcripts
@@ -99,13 +126,17 @@ src/
 │   └── ui/                           # Shared UI: button, card, badge, score, chat bubbles
 └── lib/
     ├── apify.ts                      # Scrapers, URL parsing, labeled sections
-    ├── llm.ts                        # Gemini calls, schemas, validation
+    ├── llm.ts                        # Gemini model pool, persona extraction, two-agent date loop
     ├── prompts.ts                    # Prompt templates
     ├── dates.ts                      # Shared date simulation + insert
+    ├── matching.ts                   # Consent + preference hard filters
+    ├── rate-limit.ts                 # Per-IP limits + profile cap
     ├── queries.ts                    # Server-side reads for pages
     └── supabase.ts                   # Service-role client
 supabase/schema.sql                   # Database schema
 scripts/setup-db.mjs                  # Applies the schema
+scripts/seed-demo.mjs                 # Seeds fictional demo profiles (scripts/demo-profiles.json)
+scripts/eval.ts                       # Writes EVAL.md (npm run eval)
 ```
 
 ---
@@ -115,8 +146,8 @@ scripts/setup-db.mjs                  # Applies the schema
 1. **Clone the repository and install dependencies:**
 
    ```bash
-   git clone https://github.com/your-username/personamatch.git
-   cd personamatch
+   git clone https://github.com/yerramsettysuchita/PersonaMatch.git
+   cd PersonaMatch
    npm install
    ```
 

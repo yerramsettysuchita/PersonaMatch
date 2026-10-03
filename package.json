@@ -7,16 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:setup": "node scripts/setup-db.mjs"
+    "db:setup": "node scripts/setup-db.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
     "@supabase/supabase-js": "^2.117.2",
     "apify-client": "^2.25.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.50.0",
     "next": "16.3.8",
-    "openai": "^7.27.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.7.0"
@@ -31,6 +31,7 @@
     "eslint-config-next": "16.3.8",
     "pg": "^8.23.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "description": "Agentic AI dating simulator: builds personas from LinkedIn and Instagram, simulates first dates with Gemini, and ranks the most compatible matches.",

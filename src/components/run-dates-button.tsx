@@ -5,11 +5,23 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
-// Calls /api/rank (which simulates any missing dates) and opens the leaderboard.
+const MAX_ROUNDS = 6;
+
+type RankResponse = {
+  rankings?: unknown[];
+  not_dated?: unknown[];
+  failed?: unknown[];
+  error?: string;
+};
+
+// Calls /api/rank (which simulates up to 10 missing dates per call) repeatedly
+// until every eligible candidate is dated or MAX_ROUNDS pass, then opens the
+// leaderboard. The leaderboard itself flags anything still missing.
 export function RunDatesButton({ personId, label = "Run Dates" }: { personId: string; label?: string }) {
   const router = useRouter();
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,21 +32,30 @@ export function RunDatesButton({ personId, label = "Run Dates" }: { personId: st
 
   async function run() {
     setError(null);
+    setProgress(null);
     setSeconds(0);
     setStartedAt(Date.now());
     try {
-      const res = await fetch("/api/rank", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ person_id: personId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        router.push(`/profile/${personId}/rankings`);
-        router.refresh();
-        return;
+      for (let round = 1; round <= MAX_ROUNDS; round++) {
+        const res = await fetch("/api/rank", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_id: personId }),
+        });
+        const data: RankResponse = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error ?? `Ranking failed (HTTP ${res.status}).`);
+          setStartedAt(null);
+          return;
+        }
+        const done = data.rankings?.length ?? 0;
+        const remaining = (data.not_dated?.length ?? 0) + (data.failed?.length ?? 0);
+        setProgress({ done, total: done + remaining });
+        if (remaining === 0) break;
       }
-      setError(data.error ?? `Ranking failed (HTTP ${res.status}).`);
+      router.push(`/profile/${personId}/rankings`);
+      router.refresh();
+      return;
     } catch {
       setError("Couldn't reach the server.");
     }
@@ -48,13 +69,18 @@ export function RunDatesButton({ personId, label = "Run Dates" }: { personId: st
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Wine className="size-4" />}
         {busy ? (
           <>
-            Simulating dates… <span className="tabular-nums opacity-70">{seconds}s</span>
+            {progress ? `Dated ${progress.done} of ${progress.total} candidates` : "Simulating dates…"}{" "}
+            <span className="tabular-nums opacity-70">{seconds}s</span>
           </>
         ) : (
           label
         )}
       </Button>
-      {busy && <p className="text-xs text-zinc-500 dark:text-zinc-400">New dates take ~20s each, 3 at a time.</p>}
+      {busy && (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Two AI agents date each candidate (~15s each, 3 at a time).
+        </p>
+      )}
       {error && (
         <p role="alert" className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
           <AlertTriangle className="size-3.5" />

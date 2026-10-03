@@ -29,7 +29,7 @@ try {
   await client.query("notify pgrst, 'reload schema'");
   const { rows } = await client.query(
     `select table_name from information_schema.tables
-     where table_schema = 'public' and table_name in ('profiles', 'dates', 'rankings')
+     where table_schema = 'public' and table_name in ('profiles', 'dates', 'rankings', 'scrape_cache', 'rate_limits')
      order by table_name`
   );
   console.log("Tables ready:", rows.map((r) => r.table_name).join(", "));
