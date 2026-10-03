@@ -3,7 +3,7 @@
 import type { InstagramData, LinkedInData, PastedData } from "./apify";
 import type { DateRow } from "./dates";
 import type { Evidence } from "./llm";
-import { pairBlockers, type Preferences } from "./matching";
+import { pairBlockers, samePool, type Preferences } from "./matching";
 import { supabaseAdmin } from "./supabase";
 import { isUuid } from "./utils";
 
@@ -23,19 +23,19 @@ export type Profile = Omit<Preferences, "name"> & {
   created_at: string;
 };
 
-export type ProfileSummary = Pick<Profile, "id" | "name" | "created_at">;
+export type ProfileSummary = Pick<Profile, "id" | "name" | "created_at" | "is_sample">;
 
 export type RankingRow = {
   rank: number;
   compatibility_score: number;
   reasoning: string | null;
   created_at: string;
-  candidate: { id: string; name: string } | null;
+  candidate: { id: string; name: string; is_sample: boolean } | null;
 };
 
 export type DateWithPeople = DateRow & {
-  person_a: { id: string; name: string } | null;
-  person_b: { id: string; name: string } | null;
+  person_a: { id: string; name: string; is_sample: boolean } | null;
+  person_b: { id: string; name: string; is_sample: boolean } | null;
 };
 
 function check<T>(res: { data: T | null; error: { message: string } | null }): T {
@@ -50,7 +50,7 @@ export async function getProfile(id: string): Promise<Profile | null> {
 
 export async function listProfiles(limit = 20): Promise<ProfileSummary[]> {
   return check(
-    await supabaseAdmin().from("profiles").select("id, name, created_at").order("created_at", { ascending: false }).limit(limit)
+    await supabaseAdmin().from("profiles").select("id, name, created_at, is_sample").order("created_at", { ascending: false }).limit(limit)
   );
 }
 
@@ -58,7 +58,7 @@ export async function getRankings(personId: string): Promise<RankingRow[]> {
   return check(
     await supabaseAdmin()
       .from("rankings")
-      .select("rank, compatibility_score, reasoning, created_at, candidate:profiles!rankings_candidate_id_fkey(id, name)")
+      .select("rank, compatibility_score, reasoning, created_at, candidate:profiles!rankings_candidate_id_fkey(id, name, is_sample)")
       .eq("person_id", personId)
       .order("rank")
       .returns<RankingRow[]>()
@@ -70,7 +70,7 @@ export async function getDates(personId: string): Promise<DateWithPeople[]> {
     await supabaseAdmin()
       .from("dates")
       .select(
-        "*, person_a:profiles!dates_person_a_id_fkey(id, name), person_b:profiles!dates_person_b_id_fkey(id, name)"
+        "*, person_a:profiles!dates_person_a_id_fkey(id, name, is_sample), person_b:profiles!dates_person_b_id_fkey(id, name, is_sample)"
       )
       .or(`person_a_id.eq.${personId},person_b_id.eq.${personId}`)
       .order("created_at", { ascending: false })
@@ -103,14 +103,14 @@ export async function getRankingCoverage(person: Profile, rankings: RankingRow[]
     check(
       await db
         .from("profiles")
-        .select("id, name, opted_in, looking_for, age, age_range_min, age_range_max, city")
+        .select("id, name, opted_in, looking_for, age, age_range_min, age_range_max, city, is_sample, sandbox_opt_in")
         .neq("id", person.id)
         .eq("opted_in", true)
         .returns<(Preferences & { id: string })[]>()
     ),
     getDates(person.id),
   ]);
-  const eligible = others.filter((o) => pairBlockers({ ...person }, o).length === 0);
+  const eligible = others.filter((o) => samePool(person, o) && pairBlockers({ ...person }, o).length === 0);
   const dated = new Set(dates.map((d) => (d.person_a_id === person.id ? d.person_b_id : d.person_a_id)));
   const ranked = new Set(rankings.map((r) => r.candidate?.id));
   return {

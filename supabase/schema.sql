@@ -62,8 +62,12 @@ alter table public.profiles
   -- { proposed, verified }: how many of Gemini's citations verified at ingest
   add column if not exists citation_stats jsonb;
 
--- Removed: is_sample (fictional sample profiles are no longer used).
-alter table public.profiles drop column if exists is_sample;
+-- Sandbox. is_sample marks fictional sample profiles (scripts/demo-profiles.json).
+-- Samples date each other; a real person dates samples only if they set
+-- sandbox_opt_in. Real-to-real dating never involves samples.
+alter table public.profiles
+  add column if not exists is_sample      boolean not null default false,
+  add column if not exists sandbox_opt_in boolean not null default false;
 
 alter table public.profiles drop constraint if exists profiles_age_range_order;
 alter table public.profiles add constraint profiles_age_range_order

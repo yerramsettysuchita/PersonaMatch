@@ -1,6 +1,7 @@
 [
   {
     "consent": true,
+    "sandbox_opt_in": false,
     "linkedin_url": "https://www.linkedin.com/in/their-handle",
     "instagram_url": "https://www.instagram.com/their-handle",
     "age": 24,

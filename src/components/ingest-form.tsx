@@ -60,6 +60,7 @@ export function IngestForm() {
   const [texts, setTexts] = useState<Record<Platform, string>>({ linkedin: "", instagram: "" });
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
+  const [sandbox, setSandbox] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>({ looking_for: "", age: "", age_range_min: "", age_range_max: "", city: "" });
   const setPref = (key: keyof Prefs, value: string) => setPrefs((p) => ({ ...p, [key]: value }));
   const [manual, setManual] = useState<Platform[]>([]);
@@ -107,6 +108,7 @@ export function IngestForm() {
     try {
       const body: Record<string, string | number | boolean> = { opted_in: true };
       if (confirmIdentity) body.confirm_identity = true;
+      if (sandbox) body.sandbox_opt_in = true;
       if (name.trim()) body.name = name.trim();
       if (prefs.looking_for) body.looking_for = prefs.looking_for;
       if (prefs.city.trim()) body.city = prefs.city.trim();
@@ -313,6 +315,21 @@ export function IngestForm() {
             </span>
             Required. I am this person, or they have agreed to have their public LinkedIn and Instagram read and to
             join the PersonaMatch dating pool. They are 18 or older and single.
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-4 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            checked={sandbox}
+            onChange={(e) => setSandbox(e.target.checked)}
+            disabled={busy}
+            className="mt-0.5 size-4 shrink-0 accent-violet-600"
+          />
+          <span>
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Sandbox (optional):</span> also go on dates
+            with clearly labelled fictional sample profiles, so there are matches to explore while the real pool is
+            small. Real and sample matches are always shown separately.
           </span>
         </label>
 

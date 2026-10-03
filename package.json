@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:setup": "node scripts/setup-db.mjs",
     "eval": "tsx scripts/eval.ts",
-    "ingest:people": "node scripts/ingest-people.mjs"
+    "ingest:people": "node scripts/ingest-people.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

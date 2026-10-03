@@ -1,6 +1,6 @@
 import { createDate, PERSONA_COLUMNS, type DateRow, type PersonaRow } from "@/lib/dates";
 import { generateRankingReasons } from "@/lib/llm";
-import { pairBlockers } from "@/lib/matching";
+import { pairBlockers, samePool } from "@/lib/matching";
 import { rateLimit } from "@/lib/rate-limit";
 import type { RankedDateSummary } from "@/lib/prompts";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -80,7 +80,9 @@ export async function POST(request: Request) {
   }
   // Hard filters: only pairs that pass both people's declared preferences.
   const filteredOut: { candidate_id: string; name: string; reasons: string[] }[] = [];
-  const others = othersRes.data.filter((o) => {
+  // People outside this person's pool (samples vs real, see samePool) are
+  // skipped silently rather than listed as filtered out.
+  const others = othersRes.data.filter((o) => samePool(person, o)).filter((o) => {
     const reasons = pairBlockers(person, o);
     if (reasons.length) filteredOut.push({ candidate_id: o.id, name: o.name, reasons });
     return reasons.length === 0;

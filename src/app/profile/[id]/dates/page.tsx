@@ -22,6 +22,7 @@ export default async function DatesPage(props: PageProps<"/profile/[id]/dates">)
       me,
       myName: profile.name,
       otherName: other?.name ?? "Deleted profile",
+      otherIsSample: !!other?.is_sample,
       venue: d.venue,
       shared_interest: d.shared_interest,
       transcript: d.transcript,

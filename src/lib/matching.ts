@@ -12,7 +12,19 @@ export type Preferences = {
   age_range_min: number | null;
   age_range_max: number | null;
   city: string | null;
+  // Fictional sample profile (sandbox). See samePool.
+  is_sample?: boolean;
+  // A real person who also agreed to date fictional samples.
+  sandbox_opt_in?: boolean;
 };
+
+// Samples date samples and real people date real people. The only crossover:
+// a real person who set sandbox_opt_in may also date samples.
+export function samePool(a: Pick<Preferences, "is_sample" | "sandbox_opt_in">, b: Pick<Preferences, "is_sample" | "sandbox_opt_in">) {
+  if (!!a.is_sample === !!b.is_sample) return true;
+  const real = a.is_sample ? b : a;
+  return !!real.sandbox_opt_in;
+}
 
 const sameCity = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -36,13 +48,14 @@ export function pairBlockers(a: Preferences, b: Preferences): string[] {
   const reasons: string[] = [];
   if (!a.opted_in) reasons.push(`${a.name} hasn't opted in to the dating pool`);
   if (!b.opted_in) reasons.push(`${b.name} hasn't opted in to the dating pool`);
+  if (!samePool(a, b)) reasons.push("fictional sample profiles only date real people who opted in to the sandbox");
   if (a.city && b.city && !sameCity(a.city, b.city)) reasons.push(`different cities (${a.city} vs ${b.city})`);
   if (a.looking_for && b.looking_for && a.looking_for !== b.looking_for && a.looking_for !== "open" && b.looking_for !== "open")
     reasons.push(`looking for different things (${a.looking_for} vs ${b.looking_for})`);
   return [...reasons, ...unmet(a, b), ...unmet(b, a)];
 }
 
-export type PreferenceInput = Omit<Preferences, "name" | "opted_in">;
+export type PreferenceInput = Omit<Preferences, "name" | "opted_in" | "is_sample" | "sandbox_opt_in">;
 
 // Validates the optional self-declared fields from an ingest request.
 export function parsePreferences(body: Record<string, unknown>): { value: PreferenceInput } | { error: string } {

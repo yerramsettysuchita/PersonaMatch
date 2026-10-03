@@ -2,6 +2,7 @@ import { AlertTriangle, History, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RunDatesButton } from "@/components/run-dates-button";
+import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -22,6 +23,8 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
   const rankings = await getRankings(id);
   const coverage = profile.opted_in ? await getRankingCoverage(profile, rankings) : null;
   const missing = coverage ? coverage.undated.length + coverage.unranked.length : 0;
+  const sampleMatches = rankings.filter((r) => r.candidate?.is_sample).length;
+  const realMatches = rankings.length - sampleMatches;
 
   return (
     <div>
@@ -46,6 +49,17 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
           </>
         }
       />
+
+      {rankings.length > 0 && (
+        <div className="mb-6 flex flex-wrap gap-2 text-sm">
+          <Badge tone="emerald">
+            {realMatches} real {realMatches === 1 ? "match" : "matches"}
+          </Badge>
+          <Badge tone="violet">
+            {sampleMatches} fictional sample {sampleMatches === 1 ? "match" : "matches"}
+          </Badge>
+        </div>
+      )}
 
       {!profile.opted_in && (
         <p className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
@@ -98,12 +112,15 @@ export default async function RankingsPage(props: PageProps<"/profile/[id]/ranki
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                   {r.candidate ? (
-                    <Link
-                      href={`/profile/${r.candidate.id}`}
-                      className="truncate font-semibold text-zinc-900 hover:text-rose-600 dark:text-zinc-100 dark:hover:text-rose-400"
-                    >
-                      {r.candidate.name}
-                    </Link>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Link
+                        href={`/profile/${r.candidate.id}`}
+                        className="truncate font-semibold text-zinc-900 hover:text-rose-600 dark:text-zinc-100 dark:hover:text-rose-400"
+                      >
+                        {r.candidate.name}
+                      </Link>
+                      {r.candidate.is_sample && <Badge tone="violet">Fictional sample</Badge>}
+                    </span>
                   ) : (
                     <span className="font-semibold text-zinc-400">Deleted profile</span>
                   )}

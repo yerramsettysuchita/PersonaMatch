@@ -35,6 +35,8 @@ type IngestBody = {
   city?: string;
   // Set after the user confirms a 409 "may not be the same person" warning.
   confirm_identity?: boolean;
+  // Also date clearly labelled fictional sample profiles (sandbox).
+  sandbox_opt_in?: boolean;
 };
 
 type SourceResult<T> =
@@ -212,6 +214,7 @@ export async function POST(request: Request) {
     raw_instagram_data: instagram.data,
     ...persona,
     opted_in: true,
+    sandbox_opt_in: body.sandbox_opt_in === true,
     ...prefs.value,
   };
 

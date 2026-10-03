@@ -12,6 +12,7 @@ export type DateItem = {
   me: "a" | "b";
   myName: string;
   otherName: string;
+  otherIsSample: boolean;
   venue: string | null;
   shared_interest: string | null;
   transcript: Turn[];
@@ -43,6 +44,7 @@ export function DateList({ dates }: { dates: DateItem[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-zinc-900 dark:text-zinc-100">{d.otherName}</span>
+                  {d.otherIsSample && <Badge tone="violet">Fictional sample</Badge>}
                   {mutual && (
                     <Badge tone="rose">
                       <Sparkles className="size-3" /> Mutual match

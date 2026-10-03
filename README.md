@@ -58,7 +58,7 @@ graph TD
 
 ## 📊 Evaluation
 
-`npm run eval` measures the system over everyone in the database and writes `EVAL.md`:
+`npm run eval` measures the system over the real people in the database (fictional samples excluded by default) and writes `EVAL.md`:
 
 | Metric | What it measures |
 | --- | --- |
@@ -73,6 +73,8 @@ graph TD
 ## 👥 Adding People
 
 PersonaMatch only includes **consenting people**: each person agrees to have their public LinkedIn and Instagram used before they're added. One at a time, use the form on the home page (the consent box is required). In bulk, list them in `scripts/people.json` (copy `scripts/people.example.json`; the file is git-ignored because it holds people's details), recording `"consent": true` only after each person agreed, then run `npm run ingest:people`. It ingests everyone, then dates and ranks the whole pool until the rankings are complete.
+
+**Sandbox (fictional samples).** While the real pool is small, `npm run seed:demo` adds 8 clearly made-up sample profiles (`scripts/demo-profiles.json`). Samples only date each other and real people who explicitly opt in to the sandbox (the form's sandbox checkbox, or `"sandbox_opt_in": true` in `people.json`). Real-to-real dating is unaffected. Every date and ranking involving a sample carries a "Fictional sample" badge, rankings show real and sample match counts separately, and `npm run eval` excludes samples unless `EVAL_INCLUDE_SAMPLES=1`.
 
 ---
 
@@ -94,7 +96,7 @@ Defined in [`supabase/schema.sql`](supabase/schema.sql):
 
 | Table | Key Columns | Description |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
+| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats`, `is_sample`, `sandbox_opt_in` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
 | `dates` | `id`, `person_a_id`, `person_b_id`, `transcript`, `venue`, `shared_interest`, `score_a/b`, `reason_a/b`, `second_date_a/b` | One simulated date: the 6–8 turn conversation and both independent verdicts. |
 | `rankings` | `id`, `person_id`, `candidate_id`, `rank`, `compatibility_score`, `reasoning` | The latest leaderboard for each person (score out of 30). |
 | `scrape_cache` | `normalized_url`, `platform`, `data`, `fetched_at` | Apify results, reused for 24h. |
@@ -108,7 +110,7 @@ All tables have row-level security enabled with no policies, so the public anon 
 
 | Route | Body | What it does |
 | --- | --- | --- |
-| `POST /api/ingest` | `{ opted_in: true, linkedin_url, instagram_url, name?, linkedin_text?, instagram_text?, looking_for?, age?, age_range_min?, age_range_max?, city?, confirm_identity? }` | Requires consent (`400` otherwise). Scrapes both profiles (or uses pasted text), extracts the persona, saves it with the declared preferences; re-ingesting a LinkedIn URL updates that profile (`200`). `422` + `needs_manual` if a scrape fails or Instagram is private/empty, `409` if the two names clearly differ, `429` over the rate limit, `403` when the pool is full. |
+| `POST /api/ingest` | `{ opted_in: true, linkedin_url, instagram_url, name?, linkedin_text?, instagram_text?, looking_for?, age?, age_range_min?, age_range_max?, city?, confirm_identity?, sandbox_opt_in? }` | Requires consent (`400` otherwise). Scrapes both profiles (or uses pasted text), extracts the persona, saves it with the declared preferences; re-ingesting a LinkedIn URL updates that profile (`200`). `422` + `needs_manual` if a scrape fails or Instagram is private/empty, `409` if the two names clearly differ, `429` over the rate limit, `403` when the pool is full. |
 | `POST /api/date` | `{ person_a_id, person_b_id }` | Runs one two-agent date and saves it. Returns `422` with `reasons` if either person isn't opted in or the pair fails someone's preferences. |
 | `POST /api/rank` | `{ person_id }` | Considers only opted-in candidates that pass both people's preferences (the rest are listed in `filtered_out`), runs missing dates (up to 10 per call, 3 at a time), scores them, and replaces that person's rankings. |
 
@@ -138,6 +140,7 @@ src/
 supabase/schema.sql                   # Database schema
 scripts/setup-db.mjs                  # Applies the schema
 scripts/ingest-people.mjs             # Ingests consenting real people (scripts/people.json), then dates + ranks them
+scripts/seed-demo.mjs                 # Adds the fictional sample profiles (sandbox)
 scripts/eval.ts                       # Writes EVAL.md (npm run eval)
 ```
 

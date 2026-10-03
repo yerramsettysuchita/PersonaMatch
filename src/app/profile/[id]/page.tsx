@@ -64,6 +64,13 @@ export default async function ProfilePage(props: PageProps<"/profile/[id]">) {
         }
       />
 
+      {profile.is_sample && (
+        <div className="mb-6 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200">
+          Fictional sample profile: not a real person. Samples date each other and real people who opted in to the
+          sandbox.
+        </div>
+      )}
+
       {!profile.opted_in && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
           <ShieldOff className="mt-0.5 size-4 shrink-0" />
@@ -222,6 +229,7 @@ function PreferencesCard({ profile }: { profile: Profile }) {
     age !== null && { label: "Age", value: String(age) },
     (min !== null || max !== null) && { label: "Partner age", value: `${min ?? 18}–${max ?? "any"}` },
     city && { label: "City", value: city },
+    profile.sandbox_opt_in && { label: "Sandbox", value: "Also dates fictional samples" },
   ].filter((x): x is { label: string; value: string } => !!x);
 
   return (

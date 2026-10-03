@@ -66,11 +66,13 @@ for (const [i, person] of people.entries()) {
   }
 }
 
-// Date and rank everyone in the pool.
+// Date and rank every real person in the pool. People with "sandbox_opt_in":
+// true also date the fictional sample profiles (run npm run seed:demo first).
 const { data: pool, error } = await db
   .from("profiles")
   .select("id, name")
   .eq("opted_in", true)
+  .eq("is_sample", false)
   .order("name");
 if (error) throw new Error(error.message);
 console.log(`\nDating and ranking ${pool.length} people in the pool...`);
