@@ -2,6 +2,9 @@
 //
 //   npm run eval                    full report, incl. consistency re-runs
 //   EVAL_RERUNS=0 npm run eval      skip re-runs (no Gemini calls)
+//   EVAL_INCLUDE_SAMPLES=1 npm run eval   also count fictional sample profiles
+//
+// By default only real (non-sample) profiles and the dates between them are evaluated.
 //
 // Consistency re-runs call simulateDate directly and are NOT stored, so they
 // don't change anyone's dates or rankings. Each re-run is 11 Gemini calls.
@@ -15,6 +18,7 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 
 const PAIRS = 5;
 const RERUNS = Number(process.env.EVAL_RERUNS ?? 1);
+const INCLUDE_SAMPLES = process.env.EVAL_INCLUDE_SAMPLES === "1";
 
 type ProfileRow = PersonaRow & {
   citation_stats: { proposed: number; verified: number } | null;
@@ -34,18 +38,26 @@ const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "n
 const f2 = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : "n/a");
 
 async function main() {
-  const [{ data: profiles, error: pe }, { data: dates, error: de }] = await Promise.all([
+  const [{ data: allProfiles, error: pe }, { data: allDates, error: de }] = await Promise.all([
     db.from("profiles").select("*").order("name").returns<ProfileRow[]>(),
     db.from("dates").select("*").returns<DateRow[]>(),
   ]);
   if (pe || de) throw new Error((pe ?? de)!.message);
+  const profiles = allProfiles.filter((p) => INCLUDE_SAMPLES || !p.is_sample);
+  const included = new Set(profiles.map((p) => p.id));
+  const dates = allDates.filter((d) => included.has(d.person_a_id) && included.has(d.person_b_id));
+  const excludedSamples = allProfiles.length - profiles.length;
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const out: string[] = [];
   const line = (s = "") => out.push(s);
 
   line("# PersonaMatch evaluation");
   line();
-  line(`Generated ${new Date().toISOString()} by \`npm run eval\` over ${profiles.length} profiles and ${dates.length} dates.`);
+  line(
+    `Generated ${new Date().toISOString()} by \`npm run eval\` over ${profiles.length} ${INCLUDE_SAMPLES ? "" : "real "}profiles ` +
+      `(${profiles.filter((p) => p.opted_in).length} opted in) and ${dates.length} dates.` +
+      (excludedSamples ? ` ${excludedSamples} fictional sample profiles excluded (EVAL_INCLUDE_SAMPLES=1 to include).` : "")
+  );
   line();
 
   // 1. Citation verification

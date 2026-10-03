@@ -64,6 +64,12 @@ export default async function ProfilePage(props: PageProps<"/profile/[id]">) {
         }
       />
 
+      {profile.is_sample && (
+        <div className="mb-6 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200">
+          Fictional sample profile: not a real person. Samples only date other samples.
+        </div>
+      )}
+
       {!profile.opted_in && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
           <ShieldOff className="mt-0.5 size-4 shrink-0" />

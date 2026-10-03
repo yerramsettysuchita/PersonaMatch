@@ -1,7 +1,9 @@
 // Seeds the fictional demo profiles in scripts/demo-profiles.json through the
 // ingest API (pasted-text path, so no Apify credit is used), then ranks
 // everyone so dates and leaderboards exist.
-// These are made-up people, not real users.
+// These are made-up people, not real users: they're flagged is_sample, kept in
+// their own dating pool, labelled "Fictional sample" in the UI and excluded
+// from npm run eval. Real people go through scripts/ingest-people.mjs.
 //
 // Re-runnable: people already in the database are skipped.
 // Usage: npm run seed:demo                       (local dev server on :3005)
@@ -39,6 +41,8 @@ for (const person of people) {
     continue;
   }
   const { profile } = await post("/api/ingest", { ...person, opted_in: true });
+  const { error: flagError } = await db.from("profiles").update({ is_sample: true }).eq("id", profile.id);
+  if (flagError) throw new Error(flagError.message);
   ids.push(profile.id);
   console.log(`ingested ${profile.name}`);
 }

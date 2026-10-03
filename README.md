@@ -58,7 +58,9 @@ graph TD
 
 ## 📊 Evaluation
 
-`npm run eval` measures the system over everything in the database and writes [EVAL.md](EVAL.md). Latest run (8 fictional demo profiles, 9 two-agent dates):
+`npm run eval` measures the system over the real people in the database (fictional samples excluded by default) and writes [EVAL.md](EVAL.md).
+
+**The numbers below are a pipeline check on 8 fictional sample profiles (9 two-agent dates), not real people.** They'll be replaced after ingesting consenting real people with `npm run ingest:people`.
 
 | Metric | Result |
 | --- | --- |
@@ -69,7 +71,16 @@ graph TD
 | Position bias | Speaking first: 6.89 vs second: 6.56 (+0.33) |
 | Consistency | 5 pairs re-simulated: mean score variance 0.82 (≈0.9 points); second-date votes stable in 5/5 |
 
-Caveats: this is a small sample of fictional profiles, and scores cluster at 7–8, so the ranking leans on the mutual second-date bonus to separate candidates.
+Caveats: this is a small set of fictional profiles, and scores cluster at 7–8, so the ranking leans on the mutual second-date bonus to separate candidates.
+
+---
+
+## 👥 Real People vs Sample Data
+
+PersonaMatch is meant to run on **real, consenting people**: each person agrees to have their public LinkedIn and Instagram used before they're added.
+
+* **Real people:** list them in `scripts/people.json` (copy `scripts/people.example.json`; the file is git-ignored because it holds real people's details), with `"consent": true` recorded only after they agreed, then run `npm run ingest:people`. It ingests everyone, then dates and ranks the whole real pool until the rankings are complete.
+* **Fictional samples:** `npm run seed:demo` adds 8 made-up profiles (`scripts/demo-profiles.json`) to test the pipeline without anyone's data. They're flagged `is_sample`, labelled "Fictional sample" in the UI, only date each other, and are excluded from `npm run eval`.
 
 ---
 
@@ -91,7 +102,7 @@ Defined in [`supabase/schema.sql`](supabase/schema.sql):
 
 | Table | Key Columns | Description |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
+| `profiles` | `id`, `name`, `linkedin_url`, `instagram_url`, `needs`, `hobbies`, `interests`, `values`, `communication_style`, `evidence`, `opted_in`, `looking_for`, `age`, `age_range_min`, `age_range_max`, `city`, `citation_stats`, `is_sample` | The parsed persona, its verified citations, the cleaned raw scrape data, and the person's consent and self-declared preferences. `linkedin_url` is unique. |
 | `dates` | `id`, `person_a_id`, `person_b_id`, `transcript`, `venue`, `shared_interest`, `score_a/b`, `reason_a/b`, `second_date_a/b` | One simulated date: the 6–8 turn conversation and both independent verdicts. |
 | `rankings` | `id`, `person_id`, `candidate_id`, `rank`, `compatibility_score`, `reasoning` | The latest leaderboard for each person (score out of 30). |
 | `scrape_cache` | `normalized_url`, `platform`, `data`, `fetched_at` | Apify results, reused for 24h. |
@@ -135,7 +146,8 @@ src/
     └── supabase.ts                   # Service-role client
 supabase/schema.sql                   # Database schema
 scripts/setup-db.mjs                  # Applies the schema
-scripts/seed-demo.mjs                 # Seeds fictional demo profiles (scripts/demo-profiles.json)
+scripts/seed-demo.mjs                 # Seeds fictional sample profiles (scripts/demo-profiles.json)
+scripts/ingest-people.mjs             # Ingests consenting real people (scripts/people.json), then dates + ranks them
 scripts/eval.ts                       # Writes EVAL.md (npm run eval)
 ```
 

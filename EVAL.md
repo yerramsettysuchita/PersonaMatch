@@ -1,5 +1,7 @@
 # PersonaMatch evaluation
 
+> **Pipeline check on fictional sample profiles, not real people.** These numbers come from the 8 made-up profiles in `scripts/demo-profiles.json` (plus one profile that isn't opted in). Re-run `npm run eval` after ingesting consenting real people; it excludes samples by default.
+
 Generated 2026-10-02T22:38:43.849Z by `npm run eval` over 9 profiles and 9 dates.
 
 ## 1. Citation verification

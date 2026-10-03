@@ -1,0 +1,19 @@
+[
+  {
+    "consent": true,
+    "linkedin_url": "https://www.linkedin.com/in/their-handle",
+    "instagram_url": "https://www.instagram.com/their-handle",
+    "age": 24,
+    "city": "Hyderabad",
+    "looking_for": "long-term",
+    "age_range_min": 22,
+    "age_range_max": 30
+  },
+  {
+    "consent": true,
+    "name": "Only needed if both are pasted",
+    "linkedin_url": "https://www.linkedin.com/in/another-handle",
+    "instagram_url": "https://www.instagram.com/private-account",
+    "instagram_text": "If their Instagram is private, paste their bio and a few captions here (with their permission), one per paragraph."
+  }
+]

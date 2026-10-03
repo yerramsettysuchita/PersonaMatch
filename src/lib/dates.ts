@@ -5,7 +5,7 @@ import type { PersonaProfile } from "./prompts";
 
 export const PERSONA_COLUMNS =
   "id, name, needs, hobbies, interests, values, communication_style, evidence, " +
-  "opted_in, looking_for, age, age_range_min, age_range_max, city";
+  "opted_in, looking_for, age, age_range_min, age_range_max, city, is_sample";
 
 export type PersonaRow = PersonaProfile & Preferences & { id: string };
 

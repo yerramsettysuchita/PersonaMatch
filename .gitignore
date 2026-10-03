@@ -43,3 +43,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# real people's details for scripts/ingest-people.mjs
+scripts/people.json
